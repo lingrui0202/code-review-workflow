@@ -89,6 +89,9 @@
   .msg { border-left: 3px solid var(--line); padding: 6px 10px; margin: 8px 0; font-size: 13px; }
   .msg .meta { font-size: 11.5px; color: var(--muted); }
   header { position: relative; }
+  .left { display: grid; gap: 18px; align-content: start; }
+  .left .card-b label.field select,
+  .left .card-b label.field input { margin-top: 4px; }
   .modelbar { position: absolute; right: 28px; top: 18px; display: flex; align-items: center; gap: 10px; }
   .modelbar button { padding: 5px 11px; font-size: 12.5px; }
   dialog {
@@ -121,12 +124,45 @@
   </div>
   <div class="modelbar">
     <span class="chip"><span class="dot" id="modelDot"></span><span id="modelBadge">模型：检查中…</span></span>
-    <button id="openModel">模型设置</button>
   </div>
 </header>
 
 <main>
   <!-- 左：输入 -->
+  <div class="left">
+  <section class="card">
+    <div class="card-h">
+      <h2>模型（可选，不填就是纯规则审查）</h2>
+      <span class="chip" style="margin-left:auto"><span class="dot" id="cfgDot"></span><span id="cfgBadge">检查中…</span></span>
+    </div>
+    <div class="card-b" style="display:grid;gap:10px">
+      <div class="row">
+        <label class="field" style="margin:0">服务商
+          <select id="cfgProvider"></select>
+        </label>
+        <label class="field" style="margin:0">API Key
+          <input type="password" id="cfgKey" spellcheck="false" placeholder="sk-...">
+        </label>
+      </div>
+      <div class="row">
+        <label class="field" style="margin:0">模型名
+          <input type="text" id="cfgModel" spellcheck="false">
+        </label>
+        <label class="field" style="margin:0">接口地址 base_url
+          <input type="text" id="cfgBaseUrl" spellcheck="false">
+        </label>
+      </div>
+      <div class="row" style="align-items:center">
+        <button id="cfgTest" class="shrink">测试连接</button>
+        <button id="cfgApply" class="shrink primary">应用</button>
+        <label class="chk" style="flex:1;display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--muted);margin:0">
+          <input type="checkbox" id="cfgSave"> 保存到 .env
+        </label>
+      </div>
+      <div id="cfgStatus" class="dlg-status"></div>
+    </div>
+  </section>
+
   <section class="card">
     <div class="card-h"><h2>输入代码</h2><span class="chip"><span class="dot" id="inputDot"></span><span id="inputHint">等待开始</span></span></div>
     <div class="card-b">
@@ -159,6 +195,8 @@
     </div>
   </section>
 
+  </div>
+
   <!-- 右：结果 -->
   <section class="card">
     <div class="card-h">
@@ -188,33 +226,7 @@
   </section>
 </main>
 
-<dialog id="modelDialog">
-  <div class="dlg">
-    <h3>模型设置</h3>
-    <p class="dlg-sub">接任意 OpenAI 兼容接口：选预设，或选「自定义」直接填 base_url。Key 只存在本机内存；勾选"保存到 .env"才会落盘。</p>
 
-    <label>服务商
-      <select id="cfgProvider"></select>
-    </label>
-    <label>接口地址 base_url
-      <input type="text" id="cfgBaseUrl" spellcheck="false" placeholder="留空使用该服务商默认地址">
-    </label>
-    <label>模型名
-      <input type="text" id="cfgModel" spellcheck="false" placeholder="留空使用默认模型">
-    </label>
-    <label>API Key
-      <input type="password" id="cfgKey" spellcheck="false" placeholder="sk-...">
-    </label>
-    <label class="chk"><input type="checkbox" id="cfgSave"> 保存到 .env（下次启动仍然生效）</label>
-
-    <div id="cfgStatus" class="dlg-status"></div>
-    <div class="dlg-actions">
-      <button type="button" id="cfgTest">测试连接</button>
-      <button type="button" id="cfgApply" class="primary">应用</button>
-      <button type="button" id="cfgClose">关闭</button>
-    </div>
-  </div>
-</dialog>
 
 <footer>
   本地服务只监听 127.0.0.1，关掉这个页面不会停止服务（在终端按 Ctrl+C 停止）。
@@ -232,6 +244,7 @@ function esc(text) {
 async function startReview() {
   const code = $("code").value;
   if (!code.trim()) { alert("先把代码贴上，或点「载入示例」"); return; }
+  if ($("useModel").checked && !(await applyConfig(true))) return;
   $("runBtn").disabled = true;
   $("placeholder").style.display = "none";
   $("views").style.display = "block";
@@ -437,10 +450,17 @@ async function loadConfig() {
       : "模型：未配置（只能离线规则）";
     $("modelDot").className = "dot " + (modelReady ? "ok" : "");
 
+    $("cfgBadge").textContent = modelReady ? `${cfg.provider_label} · ${cfg.key_hint}` : "未配置（离线规则）";
+    $("cfgDot").className = "dot " + (modelReady ? "ok" : "");
+    if (!window.__cfgInit) {
+      window.__cfgInit = true;
+      $("useModel").checked = modelReady;
+    }
+
     const hint = $("modelHint");
     hint.textContent = modelReady
       ? `已配置 ${cfg.provider_label} Key（${cfg.key_hint}）`
-      : "未配置 Key，只能离线规则审查；点右上角「模型设置」接入";
+      : "未配置 Key：只能离线规则审查；想用模型就在上面的「模型」卡片里填";
     hint.style.color = modelReady ? "var(--green)" : "var(--muted)";
 
     const select = $("cfgProvider");
@@ -517,26 +537,24 @@ async function testConfig() {
   }
 }
 
-$("openModel").addEventListener("click", async () => {
-  await loadConfig();
-  cfgStatus("");
-  $("modelDialog").showModal();
-});
+
 $("cfgProvider").addEventListener("change", () => fillPresetHints(true));
 $("cfgApply").addEventListener("click", () => applyConfig(false));
 $("cfgTest").addEventListener("click", testConfig);
-$("cfgClose").addEventListener("click", () => $("modelDialog").close());
 $("useModel").addEventListener("change", (event) => {
   if (event.target.checked && !modelReady) {
     event.target.checked = false;
-    alert("还没有可用的 API Key。\n\n把 .env.example 复制成 .env，填上 DEEPSEEK_API_KEY=sk-xxx，然后重启 start-web.bat。");
+    alert("还没有可用的 API Key。\n\n在左边「模型」卡片里选服务商、填 Key，点「应用」即可（也可以复制 .env.example 为 .env 再重启）。");
   }
 });
 loadConfig();
 
-/* 设置面板直开：?settings=1 */
+/* ?settings=1：把模型卡片滚到眼前并聚焦 Key 输入框 */
 if (new URLSearchParams(location.search).has("settings")) {
-  loadConfig().then(() => $("modelDialog").showModal());
+  loadConfig().then(() => {
+    document.querySelector(".left").scrollIntoView({ behavior: "smooth", block: "start" });
+    $("cfgKey").focus();
+  });
 }
 
 /* 演示模式：地址后面加 ?demo=1，进页面自动载入示例并跑一遍 */
