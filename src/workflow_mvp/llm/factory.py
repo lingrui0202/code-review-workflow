@@ -30,7 +30,7 @@ PRESETS: dict[str, Preset] = {
     "ollama": Preset("ollama", "http://127.0.0.1:11434/v1", "OLLAMA_API_KEY", "qwen2.5-coder:7b"),
 }
 
-PROVIDER_NAMES = (*PRESETS, "offline")
+PROVIDER_NAMES = (*PRESETS, "offline", "custom")
 
 
 def resolve_key(preset: Preset, api_key: str | None) -> str:
@@ -47,13 +47,28 @@ def create_provider(
     base_url: str | None = None,
     offline: bool = False,
 ) -> LLMProvider:
-    """按名字建 provider。``offline=True`` 或名字为 offline 时返回离线实现。"""
+    """按名字建 provider。``offline=True`` 或名字为 offline 时返回离线实现。
+
+    ``custom`` 用于任意 OpenAI 兼容接口：只要给 base_url，就能接自建服务、
+    中转站或本地网关。
+    """
     if offline:
         return OfflineProvider()
 
     chosen = (name or os.environ.get("PROVIDER") or "deepseek").strip().lower()
     if chosen == "offline":
         return OfflineProvider()
+
+    if chosen == "custom":
+        if not base_url:
+            raise LLMError("自定义接口需要 base_url（例如 https://api.example.com/v1）")
+        return OpenAICompatProvider(
+            name="custom",
+            base_url=base_url,
+            api_key=(api_key or os.environ.get("CUSTOM_API_KEY", "") or "EMPTY").strip(),
+            model=model or "gpt-4o-mini",
+        )
+
     if chosen not in PRESETS:
         raise LLMError(f"未知 provider {chosen!r}，可选：{', '.join(PROVIDER_NAMES)}")
 

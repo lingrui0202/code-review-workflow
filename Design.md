@@ -16,7 +16,7 @@
 | 支持基本工作流控制（顺序执行） | 图驱动顺序推进，条件边决定走向 | `workflow/graph.py`、`engine.py` |
 | MVP 可运行，不引入复杂编排 | 零第三方依赖，`--offline` 一条命令跑完 | `main.py` |
 | 支持分支 / 循环等高级控制（推荐） | 条件边实现分支，回边实现"修复→复检"循环，带双重循环保护 | `pipelines.py`、`engine.py` |
-| 可视化工作流编排界面（可选） | 网页版：贴代码 → 实时步骤流 → 结论/问题/差异/消息分页；另有 CLI 字符画与 Mermaid | `webui.py`、`data/webui.html` |
+| 可视化工作流编排界面（可选） | 网页版：贴代码 → 实时步骤流 → 结论/问题/差异/消息分页；模型设置面板可换厂商与接口 | `webui.py`、`model_settings.py`、`data/webui.html` |
 | 执行日志与状态追踪（推荐） | 每步 `StepRecord` + 状态审计事件 + `trace.json` | `engine.py`、`state.py` |
 | 错误恢复与重试（推荐） | 节点重试 + 状态回滚 + checkpoint 续跑 | `engine.py`、`checkpoint.py` |
 | 复用项目 1 的 Agent / 经验 | 保留 LLM 抽象、离线兜底、AST 工具、工程约定；新增适配器说明 | 见第七节 |
@@ -277,6 +277,7 @@ Agent 内部是 ReAct 还是单次调用，工作流不关心——这正是"节
 | 断点 | 每步原子写 `checkpoint.json` | `checkpoint.save` |
 | 文件 | 写前 `.bak` 备份、临时文件 + `replace` 原子替换 | `workspace.write_text` |
 | 展示层 | `emit` 回调异常被吞掉 | `engine.emit` |
+| 密钥 | 只在服务端内存，接口回掩码，落盘需显式勾选 | `model_settings.py` |
 
 ### 8.1 为什么 checkpoint 值得单独做
 

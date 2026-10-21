@@ -88,6 +88,24 @@
   .verdict.pass { color: var(--green); } .verdict.fix { color: var(--amber); }
   .msg { border-left: 3px solid var(--line); padding: 6px 10px; margin: 8px 0; font-size: 13px; }
   .msg .meta { font-size: 11.5px; color: var(--muted); }
+  header { position: relative; }
+  .modelbar { position: absolute; right: 28px; top: 18px; display: flex; align-items: center; gap: 10px; }
+  .modelbar button { padding: 5px 11px; font-size: 12.5px; }
+  dialog {
+    border: 1px solid var(--line); border-radius: 12px; padding: 0; width: 480px; max-width: 92vw;
+    box-shadow: 0 12px 32px rgba(31,35,40,.18);
+  }
+  dialog::backdrop { background: rgba(31,35,40,.35); }
+  .dlg { padding: 20px 22px 18px; display: grid; gap: 12px; }
+  .dlg h3 { margin: 0; font-size: 16px; }
+  .dlg-sub { margin: 0; font-size: 12.5px; color: var(--muted); }
+  .dlg label { display: grid; gap: 5px; font-size: 12.5px; color: var(--muted); }
+  .dlg input[type=text], .dlg input[type=password], .dlg select { padding: 7px 9px; font-size: 13px; }
+  .dlg .chk { display: flex; align-items: center; gap: 7px; color: var(--text); }
+  .dlg-status { min-height: 18px; font-size: 12.5px; white-space: pre-wrap; }
+  .dlg-status.ok { color: var(--green); }
+  .dlg-status.bad { color: var(--red); }
+  .dlg-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 2px; }
   footer { padding: 8px 28px 26px; color: #8b949e; font-size: 12px; }
   a { color: var(--accent); }
 </style>
@@ -100,6 +118,10 @@
     <b>审查 Agent</b> 挑问题 <span class="arrow">→</span>
     <b>修复 Agent</b> 动手改 <span class="arrow">↺</span>
     回到审查复检（直到问题消完或到轮次上限）
+  </div>
+  <div class="modelbar">
+    <span class="chip"><span class="dot" id="modelDot"></span><span id="modelBadge">模型：检查中…</span></span>
+    <button id="openModel">模型设置</button>
   </div>
 </header>
 
@@ -165,6 +187,34 @@
     </div>
   </section>
 </main>
+
+<dialog id="modelDialog">
+  <div class="dlg">
+    <h3>模型设置</h3>
+    <p class="dlg-sub">接任意 OpenAI 兼容接口：选预设，或选「自定义」直接填 base_url。Key 只存在本机内存；勾选"保存到 .env"才会落盘。</p>
+
+    <label>服务商
+      <select id="cfgProvider"></select>
+    </label>
+    <label>接口地址 base_url
+      <input type="text" id="cfgBaseUrl" spellcheck="false" placeholder="留空使用该服务商默认地址">
+    </label>
+    <label>模型名
+      <input type="text" id="cfgModel" spellcheck="false" placeholder="留空使用默认模型">
+    </label>
+    <label>API Key
+      <input type="password" id="cfgKey" spellcheck="false" placeholder="sk-...">
+    </label>
+    <label class="chk"><input type="checkbox" id="cfgSave"> 保存到 .env（下次启动仍然生效）</label>
+
+    <div id="cfgStatus" class="dlg-status"></div>
+    <div class="dlg-actions">
+      <button type="button" id="cfgTest">测试连接</button>
+      <button type="button" id="cfgApply" class="primary">应用</button>
+      <button type="button" id="cfgClose">关闭</button>
+    </div>
+  </div>
+</dialog>
 
 <footer>
   本地服务只监听 127.0.0.1，关掉这个页面不会停止服务（在终端按 Ctrl+C 停止）。
@@ -365,25 +415,117 @@ async function loadExample() {
 }
 $("exampleBtn").addEventListener("click", loadExample);
 
-/* ------------------------------------------------------- 模型配置状态 */
+/* ------------------------------------------------------- 模型配置 */
 let modelReady = false;
+let configData = null;
+
+function cfgStatus(text, kind) {
+  const el = $("cfgStatus");
+  el.textContent = text;
+  el.className = "dlg-status" + (kind ? " " + kind : "");
+}
+
 async function loadConfig() {
   try {
     const resp = await fetch("/api/config");
     const cfg = await resp.json();
+    configData = cfg;
     modelReady = !!cfg.key_configured;
+
+    $("modelBadge").textContent = modelReady
+      ? `模型：${cfg.provider_label} · ${cfg.model || "默认"}`
+      : "模型：未配置（只能离线规则）";
+    $("modelDot").className = "dot " + (modelReady ? "ok" : "");
+
     const hint = $("modelHint");
-    if (modelReady) {
-      hint.textContent = `已配置 ${cfg.provider} Key（${cfg.key_masked}）`;
-      hint.style.color = "var(--green)";
-    } else {
-      hint.textContent = `未配置 Key，只能离线规则审查；要接模型把 .env 放到 ${cfg.env_paths[0]}`;
-      hint.style.color = "var(--muted)";
-    }
+    hint.textContent = modelReady
+      ? `已配置 ${cfg.provider_label} Key（${cfg.key_hint}）`
+      : "未配置 Key，只能离线规则审查；点右上角「模型设置」接入";
+    hint.style.color = modelReady ? "var(--green)" : "var(--muted)";
+
+    const select = $("cfgProvider");
+    select.innerHTML = cfg.providers.map((p) => `<option value="${p.id}">${p.label}</option>`).join("");
+    select.value = cfg.provider;
+    $("cfgBaseUrl").value = cfg.base_url || "";
+    $("cfgModel").value = cfg.model || "";
+    $("cfgKey").value = "";
+    $("cfgKey").placeholder = modelReady ? `已保存 ${cfg.key_hint}（留空表示不修改）` : "sk-...";
+    fillPresetHints();
   } catch (err) {
-    /* 读不到配置不影响离线审查 */
+    $("modelBadge").textContent = "模型：状态未知";
   }
 }
+
+function fillPresetHints(resetValues) {
+  if (!configData) return;
+  const preset = (configData.presets || {})[$("cfgProvider").value];
+  const isCustom = $("cfgProvider").value === "custom";
+  $("cfgBaseUrl").placeholder = isCustom
+    ? "必填，例如 https://api.example.com/v1"
+    : (preset ? preset.base_url : "默认地址");
+  $("cfgModel").placeholder = preset ? preset.model : "默认模型";
+  if (resetValues) {
+    // 换厂商时把地址和模型带过去，否则会拿着上一家的 base_url 去请求
+    $("cfgBaseUrl").value = preset ? preset.base_url : "";
+    $("cfgModel").value = preset ? preset.model : "";
+  }
+}
+
+async function applyConfig(silent) {
+  const payload = {
+    provider: $("cfgProvider").value,
+    base_url: $("cfgBaseUrl").value.trim(),
+    model: $("cfgModel").value.trim(),
+    save_to_env: $("cfgSave").checked,
+  };
+  const typed = $("cfgKey").value.trim();
+  if (typed) payload.api_key = typed;
+
+  if (!silent) cfgStatus("正在应用…");
+  try {
+    const resp = await fetch("/api/config", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const data = await resp.json();
+    if (data.error) { cfgStatus(data.error, "bad"); return false; }
+    await loadConfig();
+    if (!silent) {
+      cfgStatus(data.saved_to ? `已应用，并写入 ${data.saved_to}` : "已应用（只在本进程生效，重启会丢）", "ok");
+    }
+    return true;
+  } catch (err) {
+    cfgStatus("应用失败：" + err, "bad");
+    return false;
+  }
+}
+
+async function testConfig() {
+  if (!(await applyConfig(true))) return;
+  cfgStatus("正在测试连接…");
+  try {
+    const resp = await fetch("/api/test", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+    const data = await resp.json();
+    if (data.ok) {
+      cfgStatus(`连接成功（${data.latency_ms}ms）\n${data.provider} 回复：${data.reply || "(空)"}`, "ok");
+    } else {
+      cfgStatus(`连接失败（阶段：${data.stage}）\n${data.error}`, "bad");
+    }
+  } catch (err) {
+    cfgStatus("测试失败：" + err, "bad");
+  }
+}
+
+$("openModel").addEventListener("click", async () => {
+  await loadConfig();
+  cfgStatus("");
+  $("modelDialog").showModal();
+});
+$("cfgProvider").addEventListener("change", () => fillPresetHints(true));
+$("cfgApply").addEventListener("click", () => applyConfig(false));
+$("cfgTest").addEventListener("click", testConfig);
+$("cfgClose").addEventListener("click", () => $("modelDialog").close());
 $("useModel").addEventListener("change", (event) => {
   if (event.target.checked && !modelReady) {
     event.target.checked = false;
@@ -391,6 +533,11 @@ $("useModel").addEventListener("change", (event) => {
   }
 });
 loadConfig();
+
+/* 设置面板直开：?settings=1 */
+if (new URLSearchParams(location.search).has("settings")) {
+  loadConfig().then(() => $("modelDialog").showModal());
+}
 
 /* 演示模式：地址后面加 ?demo=1，进页面自动载入示例并跑一遍 */
 if (new URLSearchParams(location.search).has("demo")) {

@@ -15,7 +15,8 @@ from unittest import mock
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from workflow_mvp.llm.base import LLMError
-from workflow_mvp.webui import ReviewService, build_server, example_code, load_page, provider_status
+from workflow_mvp.model_settings import ModelSettings
+from workflow_mvp.webui import ReviewService, build_server, config_payload, example_code, load_page
 
 
 def wait_done(run, timeout: float = 20.0) -> None:
@@ -67,15 +68,17 @@ class ServiceTest(unittest.TestCase):
         self.assertIn("step", levels)
         self.assertIn("done", levels)
 
-    def test_provider_status_shape(self) -> None:
-        status = provider_status()
-        for key in ("provider", "model", "key_configured", "env_paths"):
-            self.assertIn(key, status)
-        self.assertTrue(status["env_paths"])
+    def test_config_payload_shape(self) -> None:
+        payload = config_payload(ModelSettings(provider="deepseek", api_key="sk-abcdef123456"))
+        for key in ("provider", "model", "key_configured", "env_paths", "providers", "presets"):
+            self.assertIn(key, payload)
+        self.assertTrue(payload["key_configured"])
+        self.assertNotIn("sk-abcdef123456", str(payload))  # 只回显掩码
+        self.assertTrue(payload["env_paths"])
 
     def test_model_without_key_falls_back(self) -> None:
         service = ReviewService()
-        with mock.patch("workflow_mvp.webui.create_provider", side_effect=LLMError("缺少 API Key")):
+        with mock.patch("workflow_mvp.model_settings.ModelSettings.build", side_effect=LLMError("缺少 API Key")):
             run = service.start(example_code(), "x.py", max_rounds=1, use_model=True)
             wait_done(run)
         self.assertEqual(run.status, "completed")
@@ -134,6 +137,25 @@ class HttpTest(unittest.TestCase):
         cfg = json.loads(body)
         self.assertIn("key_configured", cfg)
         self.assertIn("provider", cfg)
+        self.assertTrue(any(p["id"] == "custom" for p in cfg["providers"]))
+
+    def test_config_apply_custom_provider(self) -> None:
+        status, body = self._post(
+            "/api/config",
+            {"provider": "custom", "base_url": "https://api.example.com/v1", "model": "my-model", "api_key": "sk-test-123456"},
+        )
+        self.assertEqual(status, 200)
+        cfg = json.loads(body)
+        self.assertEqual(cfg["provider"], "custom")
+        self.assertTrue(cfg["key_configured"])
+        self.assertNotIn("sk-test-123456", body)
+        # 未勾选保存时不应该落盘
+        self.assertEqual(cfg["saved_to"], "")
+
+    def test_config_custom_requires_base_url(self) -> None:
+        status, body = self._post("/api/config", {"provider": "custom", "base_url": ""})
+        self.assertEqual(status, 400)
+        self.assertIn("base_url", json.loads(body)["error"])
 
     def test_health_and_example(self) -> None:
         self.assertEqual(json.loads(self._get("/api/health")[1]), {"ok": True})

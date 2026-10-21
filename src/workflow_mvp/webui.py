@@ -21,8 +21,8 @@ from pathlib import Path
 from typing import Any
 
 from .llm.base import LLMError
-from .llm.factory import create_provider
 from .llm.offline import OfflineProvider
+from .model_settings import ModelSettings
 from .pipelines import build_review_workflow, initial_state
 from .review.finding import from_dicts
 from .workflow.engine import EngineConfig, RunResult, WorkflowEngine
@@ -69,7 +69,8 @@ class ReviewRun:
 class ReviewService:
     """跑审查的线程池（每个请求一个线程，够 MVP 用）。"""
 
-    def __init__(self) -> None:
+    def __init__(self, settings: ModelSettings | None = None) -> None:
+        self.settings = settings or ModelSettings.from_env()
         self._runs: dict[str, ReviewRun] = {}
         self._lock = threading.Lock()
 
@@ -114,10 +115,10 @@ class ReviewService:
                 provider = OfflineProvider()
                 if use_model:
                     try:
-                        provider = create_provider()
+                        provider = self.settings.build()
                         run.add_event("info", f"已连接模型：{provider.describe()}")
                     except LLMError as exc:
-                        run.add_event("warn", f"没有可用的 API Key，改用离线规则引擎（{exc}）")
+                        run.add_event("warn", f"模型不可用，改用离线规则引擎（{exc}）")
 
                 graph = build_review_workflow(provider, workspace)
                 state = initial_state(
@@ -245,22 +246,15 @@ def example_code() -> str:
 # ---------------------------------------------------------------------- HTTP
 
 
-def provider_status() -> dict:
-    """给页面看的模型配置状态：有没有 Key、用的是哪家、.env 该放哪儿。"""
+def config_payload(settings: ModelSettings) -> dict:
+    """给页面看的配置：掩码后的 Key、可选厂商、.env 位置。"""
     from .config import env_file_candidates
-    from .llm.factory import PRESETS, resolve_key
 
-    name = (os.environ.get("PROVIDER") or "deepseek").strip().lower()
-    preset = PRESETS.get(name) or PRESETS["deepseek"]
-    key = resolve_key(preset, None)
-    masked = f"{key[:4]}***{key[-2:]}" if len(key) > 8 else ("已设置" if key else "")
-    return {
-        "provider": preset.name,
-        "model": preset.model,
-        "key_configured": bool(key),
-        "key_masked": masked,
-        "env_paths": [str(path) for path in env_file_candidates()],
-    }
+    payload = settings.public()
+    paths = [str(path) for path in env_file_candidates()]
+    payload["env_paths"] = paths
+    payload["env_file"] = paths[0] if paths else ""
+    return payload
 
 
 def build_server(host: str = "127.0.0.1", port: int = 8765):
@@ -270,7 +264,8 @@ def build_server(host: str = "127.0.0.1", port: int = 8765):
     from .config import load_project_env
 
     load_project_env()  # 网页版也要读 .env，否则用户填了 Key 却用不上
-    service = ReviewService()
+    settings = ModelSettings.from_env()
+    service = ReviewService(settings)
     page_cache = {"html": load_page(), "example": example_code()}
 
     class Handler(BaseHTTPRequestHandler):
@@ -296,7 +291,7 @@ def build_server(host: str = "127.0.0.1", port: int = 8765):
                 self._send_json(run.to_dict())
                 return
             if path.startswith("/api/config"):
-                self._send_json(provider_status())
+                self._send_json(config_payload(settings))
                 return
             if path.startswith("/api/health"):
                 self._send_json({"ok": True})
@@ -304,6 +299,43 @@ def build_server(host: str = "127.0.0.1", port: int = 8765):
             self._send(404, "text/plain; charset=utf-8", "not found")
 
         def do_POST(self) -> None:  # noqa: N802
+            from urllib.parse import urlparse
+
+            route = urlparse(self.path).path
+            if route in ("/api/config", "/api/test"):
+                length = int(self.headers.get("Content-Length") or 0)
+                if length <= 0 or length > 100_000:
+                    self._send_json({"error": "请求体为空或过大"}, status=400)
+                    return
+                try:
+                    body = json.loads(self.rfile.read(length).decode("utf-8"))
+                except json.JSONDecodeError:
+                    self._send_json({"error": "请求体不是合法 JSON"}, status=400)
+                    return
+
+                if route == "/api/test":
+                    self._send_json(settings.test_connection())
+                    return
+
+                try:
+                    settings.update(body or {})
+                except ValueError as exc:
+                    self._send_json({"error": str(exc)}, status=400)
+                    return
+                saved_to = ""
+                if (body or {}).get("save_to_env"):
+                    target = Path(config_payload(settings)["env_file"])
+                    try:
+                        settings.persist(target)
+                        saved_to = str(target)
+                    except OSError as exc:
+                        self._send_json({"error": f"写入 .env 失败：{exc}"}, status=500)
+                        return
+                payload = config_payload(settings)
+                payload["saved_to"] = saved_to
+                self._send_json(payload)
+                return
+
             if not self.path.startswith("/api/review"):
                 self._send_json({"error": "not found"}, status=404)
                 return

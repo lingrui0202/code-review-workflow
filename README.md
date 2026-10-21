@@ -96,21 +96,32 @@ python examples/custom_node.py  # 演示加一个"运行验证"节点
 
 ### 接模型（可选，不接也能跑）
 
-审查和修复的主体是 AST 规则，所以**没有任何 API Key 也能跑完整流程**。想让审查 Agent 多一层"语义判断"（逻辑错误、边界缺失这类规则看不出来的问题），填一个 Key：
+两种方式，效果一样，任选其一。
+
+**方式 A：网页右上角「模型设置」（推荐，不用改文件）**
+
+![模型设置](docs/screenshot-settings.png)
+
+- 服务商下拉：DeepSeek / 通义千问 / OpenAI / Moonshot / 本地 Ollama / **自定义（任意 OpenAI 兼容接口）**；
+- 选「自定义」时自己填 `base_url`（例：`https://api.example.com/v1`）和模型名，中转站、自建网关都能接；
+- 「测试连接」会真的发一个极小的请求，告诉你成功（含延迟、模型回复）或失败在哪一步（缺 Key / 401 / 网络 / 超时）；
+- **Key 只留在本机服务进程内存里**，接口只返回 `sk-1***23` 这种掩码；勾了「保存到 .env」才会写磁盘。
+
+**方式 B：手写 `.env`（命令行用）**
 
 1. 在项目根目录把 `.env.example` 复制成 `.env`；
-2. 填一行 `DEEPSEEK_API_KEY=sk-...`（换厂商改 `PROVIDER`，Key 的变量名见 `.env.example`）；
-3. 网页版重启 `start-web.bat` 后勾选"用模型补充语义审查"；命令行则是去掉 `--offline`。
+2. 填一行 `DEEPSEEK_API_KEY=sk-...`（换厂商改 `PROVIDER`，变量名见 `.env.example`）；
+3. 命令行去掉 `--offline` 即可。
 
-优先级：命令行参数 > 环境变量 > `.env`。网页上会显示"已配置 Key（`sk-1***23`）"或"未配置 Key"，没配时勾选会被拦下来并告诉你 `.env` 该放哪。
+优先级：命令行参数 > 环境变量 > `.env`。没配 Key 时网页上显示「模型：未配置（只能离线规则）」，勾选"用模型"会被拦下并告诉你去哪配。
 
-> 为什么没 Key 也能跑？因为"挑毛病"里最确定的那部分（裸 `except`、可变默认参数、`== None`、`eval`、异常被吞……）是 Python 的 AST 直接算出来的，不需要模型；修复也只改"改法唯一"的地方。模型只负责补充语义层面的判断——这是可选项，不是前置条件。
+> 为什么没 Key 也能跑？"挑毛病"里最确定的那部分（裸 `except`、可变默认参数、`== None`、`eval`、异常被吞……）是 Python 的 AST 直接算出来的，不需要模型；修复也只改"改法唯一"的地方。模型只负责补充语义层面的判断——这是可选项，不是前置条件。
 
 ## 3. 四种使用方式
 
 | 方式 | 命令 / 代码 | 适用场景 |
 |------|-------------|----------|
-| 网页界面 | `python main.py web` | 贴代码就看结果，给老师/同学演示最直观 |
+| 网页界面 | `python main.py web` | 贴代码就看结果，右上角可直接换模型/填 Key |
 | 命令行 | `python main.py run ...` | 日常审查、批量处理 |
 | 当作库 | `build_review_workflow(provider, workspace)` | 嵌进自己的工具链 / Web 服务 |
 | 单个组件 | `review.rules.analyze(source)` | 只要静态检查，不要工作流 |
@@ -234,7 +245,7 @@ code-review-workflow/
 ├── scripts/
 │   ├── demo.py                     一键演示（两个场景）
 │   └── package.py                  跑测试 + 打 zip
-├── tests/                          90 项单元测试
+├── tests/                          107 项单元测试
 └── src/workflow_mvp/
     ├── config.py                   配置（.env / 环境变量 / CLI）
     ├── cli.py                      命令行
@@ -242,6 +253,7 @@ code-review-workflow/
     ├── report.py                   报告与产物生成
     ├── html_report.py              报告转自包含 HTML（无 Markdown 阅读器也能看）
     ├── webui.py                    本地网页服务（http.server，只用标准库）
+    ├── model_settings.py           模型设置：换厂商/地址/Key、掩码、测试连接、写 .env
     ├── workspace.py                唯一文件出入口（越权防护 / 备份 / 原子写）
     ├── workflow/
     │   ├── state.py                黑板
@@ -276,7 +288,7 @@ code-review-workflow/
 python -m unittest discover -s tests -v
 ```
 
-90 项，覆盖：
+107 项，覆盖：
 
 - **状态**：点号路径、快照隔离、回滚、diff、审计日志、序列化
 - **消息**：类型校验、投递、因果链、总线统计、序列化
@@ -286,6 +298,7 @@ python -m unittest discover -s tests -v
 - **修复**：4 类机械修复、幂等性、非法修改回滚、模型重写的三道闸
 - **端到端**：离线全流程、跳过编码节点、写回与备份、报告产物、checkpoint
 - **网页界面**：服务层跑完整审查、HTTP 端点、查询串路由、4xx 错误体
+- **模型设置**：厂商切换、Key 掩码不外泄、自定义接口必填 base_url、.env 只改相关行
 
 ## 10. 常见问题
 
@@ -293,7 +306,7 @@ python -m unittest discover -s tests -v
 能，而且这是设计选择。审查用的 12 条规则基于 Python 的 AST，是算出来的结论，不依赖模型；修复也只做"改法唯一"的机械修改。模型只在勾选/去掉 `--offline` 时参与，用来补充语义问题。所以没有 Key 时你得到的是"确定的、可复现的"结果。
 
 **API Key 填在哪里？**
-项目根目录的 `.env`（从 `.env.example` 复制）。网页版顶部的模型提示会直接显示当前是否读到了 Key；读不到时会告诉你 `.env` 应该放的完整路径。
+两个地方都行：网页右上角「模型设置」直接填（只在内存，勾选后写 `.env`），或手写项目根目录的 `.env`。网页顶部会显示当前模型状态；没配时勾选"用模型"会被拦下并给出 `.env` 路径。
 
 **离线模式的"编码 Agent"是不是假的？**
 它从内置模板生成一份**明确带缺陷**的初稿，目的是让审查与修复有东西可处理。真实编码请接模型（`--provider`）。这一点在报告和代码注释里都写明了，没有伪装成模型输出。
