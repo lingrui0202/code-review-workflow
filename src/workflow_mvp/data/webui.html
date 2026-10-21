@@ -123,7 +123,8 @@
             <option value="3">3</option>
           </select>
         </label>
-        <label><input type="checkbox" id="useModel"> 用模型补充语义审查（需 API Key）</label>
+        <label><input type="checkbox" id="useModel"> 用模型补充语义审查</label>
+        <span id="modelHint" class="hint" style="margin:0"></span>
       </div>
 
       <div class="row">
@@ -363,6 +364,33 @@ async function loadExample() {
   $("filename").value = "order_price.py";
 }
 $("exampleBtn").addEventListener("click", loadExample);
+
+/* ------------------------------------------------------- 模型配置状态 */
+let modelReady = false;
+async function loadConfig() {
+  try {
+    const resp = await fetch("/api/config");
+    const cfg = await resp.json();
+    modelReady = !!cfg.key_configured;
+    const hint = $("modelHint");
+    if (modelReady) {
+      hint.textContent = `已配置 ${cfg.provider} Key（${cfg.key_masked}）`;
+      hint.style.color = "var(--green)";
+    } else {
+      hint.textContent = `未配置 Key，只能离线规则审查；要接模型把 .env 放到 ${cfg.env_paths[0]}`;
+      hint.style.color = "var(--muted)";
+    }
+  } catch (err) {
+    /* 读不到配置不影响离线审查 */
+  }
+}
+$("useModel").addEventListener("change", (event) => {
+  if (event.target.checked && !modelReady) {
+    event.target.checked = false;
+    alert("还没有可用的 API Key。\n\n把 .env.example 复制成 .env，填上 DEEPSEEK_API_KEY=sk-xxx，然后重启 start-web.bat。");
+  }
+});
+loadConfig();
 
 /* 演示模式：地址后面加 ?demo=1，进页面自动载入示例并跑一遍 */
 if (new URLSearchParams(location.search).has("demo")) {

@@ -10,10 +10,12 @@ import unittest
 import urllib.error
 import urllib.request
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from workflow_mvp.webui import ReviewService, build_server, example_code, load_page
+from workflow_mvp.llm.base import LLMError
+from workflow_mvp.webui import ReviewService, build_server, example_code, load_page, provider_status
 
 
 def wait_done(run, timeout: float = 20.0) -> None:
@@ -65,6 +67,21 @@ class ServiceTest(unittest.TestCase):
         self.assertIn("step", levels)
         self.assertIn("done", levels)
 
+    def test_provider_status_shape(self) -> None:
+        status = provider_status()
+        for key in ("provider", "model", "key_configured", "env_paths"):
+            self.assertIn(key, status)
+        self.assertTrue(status["env_paths"])
+
+    def test_model_without_key_falls_back(self) -> None:
+        service = ReviewService()
+        with mock.patch("workflow_mvp.webui.create_provider", side_effect=LLMError("缺少 API Key")):
+            run = service.start(example_code(), "x.py", max_rounds=1, use_model=True)
+            wait_done(run)
+        self.assertEqual(run.status, "completed")
+        self.assertTrue(any(event["level"] == "warn" for event in run.events))
+        self.assertTrue(run.payload["findings"])
+
     def test_status_payload_is_json_safe(self) -> None:
         service = ReviewService()
         run = service.start(example_code(), "order_price.py", max_rounds=1)
@@ -110,6 +127,13 @@ class HttpTest(unittest.TestCase):
         status, body = self._get("/?demo=1")
         self.assertEqual(status, 200)
         self.assertIn("代码审查工作流", body)
+
+    def test_config_endpoint(self) -> None:
+        status, body = self._get("/api/config")
+        self.assertEqual(status, 200)
+        cfg = json.loads(body)
+        self.assertIn("key_configured", cfg)
+        self.assertIn("provider", cfg)
 
     def test_health_and_example(self) -> None:
         self.assertEqual(json.loads(self._get("/api/health")[1]), {"ok": True})

@@ -32,6 +32,41 @@ def load_dotenv(path: str | Path = ".env") -> dict[str, str]:
     return loaded
 
 
+def project_root() -> Path:
+    """仓库/安装根目录（用来找随项目带的 .env）。"""
+    return Path(__file__).resolve().parents[2]
+
+
+def load_project_env() -> dict[str, str]:
+    """先找当前目录的 .env，再找项目根目录的 .env。
+
+    双击 ``start-web.bat`` 时当前目录就是项目根；但如果从别的目录带路径启动，
+    只按 CWD 找会漏掉，所以这里两个位置都试一次。
+    """
+    loaded: dict[str, str] = {}
+    seen: set[Path] = set()
+    for candidate in (Path.cwd() / ".env", project_root() / ".env"):
+        try:
+            resolved = candidate.resolve()
+        except OSError:  # pragma: no cover
+            continue
+        if resolved in seen or not resolved.is_file():
+            continue
+        seen.add(resolved)
+        loaded.update(load_dotenv(resolved))
+    return loaded
+
+
+def env_file_candidates() -> list[Path]:
+    """给界面提示用：告诉用户应该把 .env 放在哪儿。"""
+    paths = [Path.cwd() / ".env", project_root() / ".env"]
+    unique: list[Path] = []
+    for path in paths:
+        if path not in unique:
+            unique.append(path)
+    return unique
+
+
 @dataclass
 class Settings:
     """一次运行的配置。"""

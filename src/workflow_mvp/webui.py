@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import importlib.resources
 import json
+import os
 import threading
 import time
 import uuid
@@ -244,10 +245,31 @@ def example_code() -> str:
 # ---------------------------------------------------------------------- HTTP
 
 
+def provider_status() -> dict:
+    """给页面看的模型配置状态：有没有 Key、用的是哪家、.env 该放哪儿。"""
+    from .config import env_file_candidates
+    from .llm.factory import PRESETS, resolve_key
+
+    name = (os.environ.get("PROVIDER") or "deepseek").strip().lower()
+    preset = PRESETS.get(name) or PRESETS["deepseek"]
+    key = resolve_key(preset, None)
+    masked = f"{key[:4]}***{key[-2:]}" if len(key) > 8 else ("已设置" if key else "")
+    return {
+        "provider": preset.name,
+        "model": preset.model,
+        "key_configured": bool(key),
+        "key_masked": masked,
+        "env_paths": [str(path) for path in env_file_candidates()],
+    }
+
+
 def build_server(host: str = "127.0.0.1", port: int = 8765):
     """构建 HTTP 服务（不启动）。port=0 时由系统分配，测试用。"""
     from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+    from .config import load_project_env
+
+    load_project_env()  # 网页版也要读 .env，否则用户填了 Key 却用不上
     service = ReviewService()
     page_cache = {"html": load_page(), "example": example_code()}
 
@@ -272,6 +294,9 @@ def build_server(host: str = "127.0.0.1", port: int = 8765):
                     self._send_json({"error": "run 不存在"}, status=404)
                     return
                 self._send_json(run.to_dict())
+                return
+            if path.startswith("/api/config"):
+                self._send_json(provider_status())
                 return
             if path.startswith("/api/health"):
                 self._send_json({"ok": True})

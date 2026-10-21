@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any, Sequence
 
 from .agents import ROLE_DESCRIPTIONS, agent_kinds
-from .config import DEFAULT_MAX_ROUNDS, Settings, load_dotenv
+from .config import DEFAULT_MAX_ROUNDS, Settings, load_project_env
 from .llm.base import LLMError
 from .llm.factory import PROVIDER_NAMES, create_provider
 from .pipelines import build_review_workflow, initial_state
@@ -130,7 +130,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def _make_settings(args: argparse.Namespace) -> Settings:
-    load_dotenv()
+    load_project_env()
     workspace = Path(getattr(args, "workspace", ".") or ".").expanduser()
     settings = Settings(
         provider=getattr(args, "provider", None) or "deepseek",
