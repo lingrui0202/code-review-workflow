@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "workflow-mvp"
+version = "1.0.0"
+description = "代码审查与修复工作流 MVP：编码 Agent → 审查 Agent → 修复 Agent"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "lingrui0202" }]
+keywords = ["workflow", "agent", "code-review", "llm", "orchestration"]
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["ruff>=0.6"]
+
+[project.scripts]
+workflow-mvp = "workflow_mvp.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+workflow_mvp = ["data/*.md"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+exclude = ["examples", "demo-work", "runs"]
