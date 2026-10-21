@@ -108,6 +108,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     sub.add_parser("rules", help="打印审查规则清单")
 
+    web = sub.add_parser("web", help="启动本地网页界面（浏览器里贴代码审查）")
+    web.add_argument("--host", default="127.0.0.1", help="监听地址，默认只监听本机")
+    web.add_argument("--port", type=int, default=8765, help="端口，默认 8765")
+    web.add_argument("--no-open", action="store_true", help="不要自动打开浏览器")
+
     resume = sub.add_parser("resume", help="从 checkpoint 继续执行")
     resume.add_argument("--checkpoint", required=True, help="checkpoint.json 路径")
     resume.add_argument("--offline", action="store_true")
@@ -339,6 +344,13 @@ def _cmd_resume(args: argparse.Namespace) -> int:
     return 0 if result.status == "completed" else 1
 
 
+def _cmd_web(args: argparse.Namespace) -> int:
+    from .webui import serve
+
+    serve(host=args.host, port=args.port, open_browser=not args.no_open)
+    return 0
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -350,6 +362,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "graph": _cmd_graph,
         "rules": _cmd_rules,
         "resume": _cmd_resume,
+        "web": _cmd_web,
     }
     try:
         return handlers[args.command](args)

@@ -23,7 +23,7 @@ workflow-mvp = "workflow_mvp.cli:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-workflow_mvp = ["data/*.md"]
+workflow_mvp = ["data/*.md", "data/*.html"]
 
 [tool.ruff]
 line-length = 120

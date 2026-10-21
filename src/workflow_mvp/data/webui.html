@@ -1,0 +1,373 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>代码审查工作流 · Code Review Workflow</title>
+<style>
+  :root {
+    --bg: #f6f8fa; --panel: #fff; --line: #d0d7de; --text: #1f2328; --muted: #57606a;
+    --accent: #0969da; --green: #1a7f37; --amber: #9a6700; --red: #cf222e;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 14px/1.65 -apple-system, "Segoe UI", "Microsoft YaHei", "PingFang SC", sans-serif;
+  }
+  header { padding: 20px 28px 14px; border-bottom: 1px solid var(--line); background: var(--panel); }
+  h1 { margin: 0; font-size: 20px; letter-spacing: .2px; }
+  h1 small { font-weight: 400; color: var(--muted); font-size: 13px; margin-left: 10px; }
+  .flow { margin-top: 10px; color: var(--muted); font-size: 13px; }
+  .flow b { color: var(--text); font-weight: 600; }
+  .flow .arrow { margin: 0 8px; color: #8b949e; }
+  main { display: grid; grid-template-columns: minmax(380px, 5fr) 7fr; gap: 18px; padding: 18px; align-items: start; }
+  @media (max-width: 1000px) { main { grid-template-columns: 1fr; } }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  .card-h { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--line); background: #f6f8fa; }
+  .card-h h2 { margin: 0; font-size: 13px; font-weight: 600; color: var(--muted); letter-spacing: .3px; }
+  .card-b { padding: 14px; }
+  input[type=text], textarea, select {
+    width: 100%; font: inherit; color: inherit; background: #fff;
+    border: 1px solid var(--line); border-radius: 7px; padding: 8px 10px;
+  }
+  textarea { font-family: "Cascadia Code", Consolas, monospace; font-size: 12.5px; line-height: 1.55;
+             min-height: 430px; resize: vertical; tab-size: 4; }
+  label.field { display: block; font-size: 12px; color: var(--muted); margin: 0 0 5px; }
+  .row { display: flex; gap: 10px; align-items: center; }
+  .row > * { flex: 1; }
+  .row > .shrink { flex: 0 0 auto; }
+  .opts { display: flex; gap: 16px; align-items: center; margin: 12px 0; font-size: 13px; color: var(--muted); flex-wrap: wrap; }
+  .opts select { width: auto; padding: 5px 8px; }
+  button {
+    font: inherit; border-radius: 7px; border: 1px solid var(--line); background: #f6f8fa;
+    color: var(--text); padding: 8px 14px; cursor: pointer;
+  }
+  button:hover { background: #eef1f4; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  button.primary:hover { background: #0757ba; }
+  button:disabled { opacity: .55; cursor: not-allowed; }
+  .hint { font-size: 12px; color: var(--muted); margin-top: 10px; }
+  .badge { display: inline-block; padding: 1px 8px; border-radius: 20px; font-size: 11.5px; font-weight: 600; }
+  .sev-high { background: #ffebe9; color: var(--red); }
+  .sev-medium { background: #fff8c5; color: var(--amber); }
+  .sev-low { background: #eaeef2; color: var(--muted); }
+  .chip { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--muted); }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: #8b949e; }
+  .dot.run { background: var(--accent); animation: pulse 1s infinite; }
+  .dot.ok { background: var(--green); }
+  .dot.bad { background: var(--red); }
+  @keyframes pulse { 50% { opacity: .25; } }
+  .tabs { display: flex; gap: 4px; padding: 8px 12px 0; border-bottom: 1px solid var(--line); background: #f6f8fa; flex-wrap: wrap; }
+  .tab { padding: 7px 12px; border: 1px solid transparent; border-bottom: none; border-radius: 7px 7px 0 0;
+         font-size: 13px; color: var(--muted); cursor: pointer; background: none; }
+  .tab.on { background: var(--panel); border-color: var(--line); color: var(--text); font-weight: 600; margin-bottom: -1px; }
+  .tab-body { padding: 14px; max-height: 640px; overflow: auto; }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 10px; margin-bottom: 14px; }
+  .stat { border: 1px solid var(--line); border-radius: 8px; padding: 9px 11px; }
+  .stat b { display: block; font-size: 20px; line-height: 1.2; }
+  .stat span { font-size: 12px; color: var(--muted); }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { border: 1px solid var(--line); padding: 6px 9px; text-align: left; vertical-align: top; }
+  th { background: #f6f8fa; font-weight: 600; white-space: nowrap; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  code { font-family: "Cascadia Code", Consolas, monospace; font-size: 12px; background: #eff2f5;
+         padding: 1px 5px; border-radius: 4px; }
+  pre { margin: 0; background: #0d1117; color: #e6edf3; padding: 12px 14px; border-radius: 8px;
+        overflow: auto; font-family: "Cascadia Code", Consolas, monospace; font-size: 12.5px; line-height: 1.55; }
+  pre .add { color: #7ee787; } pre .del { color: #ffa198; } pre .hunk { color: #79c0ff; }
+  .log { font-family: "Cascadia Code", Consolas, monospace; font-size: 12px; line-height: 1.6;
+         white-space: pre-wrap; word-break: break-all; }
+  .log div { padding: 1px 0; }
+  .log .lvl-step { color: var(--text); font-weight: 600; }
+  .log .lvl-agent { color: var(--muted); }
+  .log .lvl-warn { color: var(--amber); }
+  .log .lvl-error, .log .lvl-done { color: var(--red); }
+  .log .lvl-message, .log .lvl-state { color: #6e7781; }
+  .empty { color: var(--muted); font-size: 13px; padding: 18px 4px; }
+  .verdict { font-size: 15px; font-weight: 700; margin: 4px 0 10px; }
+  .verdict.pass { color: var(--green); } .verdict.fix { color: var(--amber); }
+  .msg { border-left: 3px solid var(--line); padding: 6px 10px; margin: 8px 0; font-size: 13px; }
+  .msg .meta { font-size: 11.5px; color: var(--muted); }
+  footer { padding: 8px 28px 26px; color: #8b949e; font-size: 12px; }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+<header>
+  <h1>代码审查工作流 <small>Code Review Workflow · 三个 Agent 协作</small></h1>
+  <div class="flow">
+    <b>编码 Agent</b> 写初稿 <span class="arrow">→</span>
+    <b>审查 Agent</b> 挑问题 <span class="arrow">→</span>
+    <b>修复 Agent</b> 动手改 <span class="arrow">↺</span>
+    回到审查复检（直到问题消完或到轮次上限）
+  </div>
+</header>
+
+<main>
+  <!-- 左：输入 -->
+  <section class="card">
+    <div class="card-h"><h2>输入代码</h2><span class="chip"><span class="dot" id="inputDot"></span><span id="inputHint">等待开始</span></span></div>
+    <div class="card-b">
+      <label class="field" for="filename">文件名（只用于报告展示）</label>
+      <input type="text" id="filename" value="review_target.py" spellcheck="false">
+
+      <div style="height:12px"></div>
+      <label class="field" for="code">要审查的 Python 代码</label>
+      <textarea id="code" spellcheck="false" placeholder="把代码贴在这里，或点下面的「载入示例」"></textarea>
+
+      <div class="opts">
+        <label>最多修复轮次
+          <select id="rounds">
+            <option value="1">1</option>
+            <option value="2" selected>2</option>
+            <option value="3">3</option>
+          </select>
+        </label>
+        <label><input type="checkbox" id="useModel"> 用模型补充语义审查（需 API Key）</label>
+      </div>
+
+      <div class="row">
+        <button class="primary" id="runBtn">开始审查</button>
+        <button class="shrink" id="exampleBtn">载入示例</button>
+      </div>
+      <div class="hint">
+        审查在临时目录里进行，不会改动你机器上的文件。离线模式下只用规则引擎，不需要 Key。
+      </div>
+    </div>
+  </section>
+
+  <!-- 右：结果 -->
+  <section class="card">
+    <div class="card-h">
+      <h2>审查结果</h2>
+      <span class="chip" style="margin-left:auto"><span class="dot" id="runDot"></span><span id="runStatus">未运行</span></span>
+    </div>
+    <div class="tabs" id="tabs">
+      <button class="tab on" data-tab="summary">结论</button>
+      <button class="tab" data-tab="findings">问题清单</button>
+      <button class="tab" data-tab="diff">修复差异</button>
+      <button class="tab" data-tab="messages">协作消息</button>
+      <button class="tab" data-tab="log">执行过程</button>
+    </div>
+    <div class="tab-body" id="tabBody">
+      <div class="empty" id="placeholder">
+        左侧贴代码 → 点「开始审查」。<br>
+        三个 Agent 会依次工作，这里实时显示它们把代码改成了什么样。
+      </div>
+      <div id="views" style="display:none">
+        <div data-view="summary"></div>
+        <div data-view="findings" style="display:none"></div>
+        <div data-view="diff" style="display:none"></div>
+        <div data-view="messages" style="display:none"></div>
+        <div data-view="log"></div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  本地服务只监听 127.0.0.1，关掉这个页面不会停止服务（在终端按 Ctrl+C 停止）。
+</footer>
+
+<script>
+const state = { runId: null, timer: null, data: null, tab: "summary", polling: false };
+const $ = (id) => document.getElementById(id);
+
+function esc(text) {
+  return String(text ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+/* ---------------------------------------------------------------- 运行 */
+async function startReview() {
+  const code = $("code").value;
+  if (!code.trim()) { alert("先把代码贴上，或点「载入示例」"); return; }
+  $("runBtn").disabled = true;
+  $("placeholder").style.display = "none";
+  $("views").style.display = "block";
+  state.data = null;
+  setStatus("跑起来了…", "run");
+  renderTables({ steps: [], findings: [], messages: [], diff: "", history: [] });
+  try {
+    const resp = await fetch("/api/review", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        code,
+        filename: $("filename").value || "review_target.py",
+        max_rounds: Number($("rounds").value),
+        use_model: $("useModel").checked,
+      }),
+    });
+    const data = await resp.json();
+    if (data.error) { setStatus(data.error, "bad"); $("runBtn").disabled = false; return; }
+    state.runId = data.run_id;
+    poll();
+  } catch (err) {
+    setStatus("请求失败：" + err, "bad");
+    $("runBtn").disabled = false;
+  }
+}
+
+async function poll() {
+  if (!state.runId) return;
+  try {
+    const resp = await fetch(`/api/status?id=${state.runId}`);
+    const data = await resp.json();
+    if (data.error) { setStatus(data.error, "bad"); return; }
+    state.data = data;
+    renderLive(data);
+    if (data.status === "running") {
+      setTimeout(poll, 250);
+    } else {
+      setStatus(data.status === "completed" ? "完成" : "失败", data.status === "completed" ? "ok" : "bad");
+      renderTables(data.payload || {});
+      $("runBtn").disabled = false;
+      const wanted = new URLSearchParams(location.search).get("tab");
+      if (wanted) showTab(wanted);
+    }
+  } catch (err) {
+    setStatus("轮询失败：" + err, "bad");
+    $("runBtn").disabled = false;
+  }
+}
+
+function setStatus(text, kind) {
+  $("runStatus").textContent = text;
+  $("runDot").className = "dot " + (kind || "");
+  $("inputHint").textContent = text;
+  $("inputDot").className = "dot " + (kind || "");
+}
+
+/* ---------------------------------------------------------------- 渲染 */
+function renderLive(data) {
+  const view = document.querySelector('[data-view="log"]');
+  view.innerHTML = (data.payload && data.payload.steps && data.payload.steps.length)
+    ? stepsTable(data.payload.steps) + logBlock(data.events)
+    : logBlock(data.events);
+  if (state.tab === "log") showTab("log");
+  if (data.payload && data.payload.findings && data.payload.findings.length && state.tab === "summary") {
+    renderTables(data.payload);
+  }
+}
+
+function logBlock(events) {
+  if (!events || !events.length) return "";
+  return '<div class="log">' + events.map((e) =>
+    `<div class="lvl-${esc(e.level)}">${String(e.t).padStart(5, " ")}ms  ${esc(e.text)}</div>`
+  ).join("") + "</div>";
+}
+
+function stepsTable(steps) {
+  const rows = steps.map((s) => `<tr>
+      <td class="num">${s.index}</td>
+      <td><code>${esc(s.node)}</code></td>
+      <td>${s.status === "ok" ? "✔" : "✖"}</td>
+      <td class="num">${s.duration_ms}ms</td>
+      <td>${esc(s.note)}</td>
+    </tr>`).join("");
+  return `<table><thead><tr><th>#</th><th>节点</th><th>状态</th><th>耗时</th><th>说明</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+function severityBadge(sev) {
+  const label = { high: "高", medium: "中", low: "低" }[sev] || sev;
+  return `<span class="badge sev-${esc(sev)}">${label}</span>`;
+}
+
+function renderTables(p) {
+  const findings = p.findings || [];
+  const high = findings.filter((f) => f.severity === "high").length;
+  const medium = findings.filter((f) => f.severity === "medium").length;
+  const low = findings.filter((f) => f.severity === "low").length;
+  const applied = (p.fix_log || []).filter((r) => r.status === "applied").length;
+  const verdictText = (high + medium) === 0 ? "通过：没有高/中风险问题" : "需人工复核：还有高/中风险问题";
+  const verdictClass = (high + medium) === 0 ? "pass" : "fix";
+  const history = p.history || [];
+
+  /* 结论 */
+  document.querySelector('[data-view="summary"]').innerHTML = `
+    <div class="stats">
+      <div class="stat"><b>${findings.length}</b><span>最终问题数</span></div>
+      <div class="stat"><b>${high}</b><span>高危</span></div>
+      <div class="stat"><b>${medium}</b><span>中危</span></div>
+      <div class="stat"><b>${applied}</b><span>已自动修复</span></div>
+    </div>
+    <div class="verdict ${verdictClass}">${verdictText}</div>
+    <div style="color:var(--muted);font-size:12.5px;margin-bottom:12px">
+      模式：${esc(p.mode || "—")} ｜ 文件：<code>${esc(p.filename || "")}</code>
+    </div>
+    ${history.length ? `<table style="margin-bottom:12px"><thead><tr><th>轮次</th><th>问题数</th><th>高</th><th>中</th><th>低</th></tr></thead><tbody>
+      ${history.map((h) => `<tr><td>第 ${h.round} 轮</td><td class="num">${h.total}</td><td class="num">${h.high}</td><td class="num">${h.medium}</td><td class="num">${h.low}</td></tr>`).join("")}
+    </tbody></table>` : ""}
+    ${(p.steps && p.steps.length) ? stepsTable(p.steps) : ""}
+  `;
+
+  /* 问题清单 */
+  document.querySelector('[data-view="findings"]').innerHTML = findings.length
+    ? `<table><thead><tr><th>严重度</th><th>规则</th><th>位置</th><th>问题</th><th>建议</th><th>能自动改</th></tr></thead><tbody>
+        ${findings.map((f) => `<tr>
+          <td>${severityBadge(f.severity)}</td>
+          <td><code>${esc(f.rule)}</code></td>
+          <td>L${f.line}${f.symbol ? " <code>" + esc(f.symbol) + "</code>" : ""}</td>
+          <td>${esc(f.message)}</td>
+          <td>${esc(f.suggestion)}</td>
+          <td>${f.fixable ? "是" : "—"}</td>
+        </tr>`).join("")}</tbody></table>`
+    : '<div class="empty">没有发现问题。</div>';
+
+  /* 差异 */
+  const diffView = document.querySelector('[data-view="diff"]');
+  if (!p.diff) {
+    diffView.innerHTML = '<div class="empty">这次运行没有改动代码（可能是没有可自动修复的问题）。</div>';
+  } else {
+    const lines = p.diff.split("\n").map((line) => {
+      let cls = "";
+      if (line.startsWith("+++") || line.startsWith("---")) cls = "hunk";
+      else if (line.startsWith("@@")) cls = "hunk";
+      else if (line.startsWith("+")) cls = "add";
+      else if (line.startsWith("-")) cls = "del";
+      return `<span class="${cls}">${esc(line)}</span>`;
+    }).join("\n");
+    const fixRows = (p.fix_log || []).map((r) => `<tr>
+        <td>${r.round ?? "—"}</td><td><code>${esc(r.rule)}</code></td><td>L${r.line}${r.symbol ? " <code>" + esc(r.symbol) + "</code>" : ""}</td>
+        <td>${r.status === "applied" ? "✅ 已改" : r.status === "rejected" ? "⛔ 回滚" : "⏭ 跳过"}</td><td>${esc(r.detail || "")}</td>
+      </tr>`).join("");
+    diffView.innerHTML = (fixRows ? `<table style="margin-bottom:12px"><thead><tr><th>轮次</th><th>规则</th><th>位置</th><th>结果</th><th>说明</th></tr></thead><tbody>${fixRows}</tbody></table>` : "")
+      + `<pre>${lines}</pre>`;
+  }
+
+  /* 协作消息 */
+  document.querySelector('[data-view="messages"]').innerHTML = (p.messages || []).length
+    ? p.messages.map((m) => `<div class="msg">
+        <div class="meta">第 ${m.iteration} 轮 · ${esc(m.kind)} · ${esc(m.sender)} → ${esc(m.recipient)}</div>
+        <div>${esc(m.content)}</div>
+      </div>`).join("")
+    : '<div class="empty">没有消息。</div>';
+
+  showTab(state.tab);
+}
+
+/* ---------------------------------------------------------------- Tab */
+function showTab(name) {
+  state.tab = name;
+  document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("on", t.dataset.tab === name));
+  document.querySelectorAll("[data-view]").forEach((v) => { v.style.display = v.dataset.view === name ? "block" : "none"; });
+}
+document.querySelectorAll(".tab").forEach((t) => t.addEventListener("click", () => showTab(t.dataset.tab)));
+
+/* ---------------------------------------------------------------- 事件 */
+$("runBtn").addEventListener("click", startReview);
+async function loadExample() {
+  const resp = await fetch("/api/example");
+  const data = await resp.json();
+  $("code").value = data.code;
+  $("filename").value = "order_price.py";
+}
+$("exampleBtn").addEventListener("click", loadExample);
+
+/* 演示模式：地址后面加 ?demo=1，进页面自动载入示例并跑一遍 */
+if (new URLSearchParams(location.search).has("demo")) {
+  loadExample().then(startReview);
+}
+</script>
+</body>
+</html>

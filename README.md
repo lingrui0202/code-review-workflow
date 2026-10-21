@@ -34,7 +34,14 @@
 
 ## 2. 快速开始
 
-**Windows 最省事：双击 `start.bat`** —— 会跑一遍离线演示，然后用浏览器打开报告。
+**Windows 双击即可：**
+
+| 双击 | 得到什么 |
+|------|----------|
+| `start-web.bat` | 本地网页（`http://127.0.0.1:8765`）：贴代码 → 点「开始审查」→ 实时看三个 Agent 轮流干活 |
+| `start.bat` | 命令行跑一遍离线演示，然后打开 HTML 报告 |
+
+![网页界面](docs/screenshot-web.png)
 
 命令行方式（不需要装任何依赖）：
 
@@ -87,11 +94,12 @@ python scripts/demo.py          # 离线跑两个场景，产出两份报告
 python examples/custom_node.py  # 演示加一个"运行验证"节点
 ```
 
-## 3. 三种使用方式
+## 3. 四种使用方式
 
 | 方式 | 命令 / 代码 | 适用场景 |
 |------|-------------|----------|
-| 命令行 | `python main.py run ...` | 日常审查、演示 |
+| 网页界面 | `python main.py web` | 贴代码就看结果，给老师/同学演示最直观 |
+| 命令行 | `python main.py run ...` | 日常审查、批量处理 |
 | 当作库 | `build_review_workflow(provider, workspace)` | 嵌进自己的工具链 / Web 服务 |
 | 单个组件 | `review.rules.analyze(source)` | 只要静态检查，不要工作流 |
 
@@ -199,7 +207,8 @@ Agent 不关心前后是谁，只关心 `state` 里有什么、要写回什么�
 ```
 code-review-workflow/
 ├── main.py                         统一入口（薄壳，只有 20 行）
-├── start.bat                       Windows 双击即跑：演示 + 打开 HTML 报告
+├── start.bat                       Windows 双击即跑：命令行演示 + 打开 HTML 报告
+├── start-web.bat                   Windows 双击即开网页版
 ├── requirements.txt                零依赖说明
 ├── pyproject.toml
 ├── .env.example
@@ -213,13 +222,14 @@ code-review-workflow/
 ├── scripts/
 │   ├── demo.py                     一键演示（两个场景）
 │   └── package.py                  跑测试 + 打 zip
-├── tests/                          79 项单元测试
+├── tests/                          90 项单元测试
 └── src/workflow_mvp/
     ├── config.py                   配置（.env / 环境变量 / CLI）
     ├── cli.py                      命令行
     ├── pipelines.py                主流程装配（节点 + 边 + 条件）
     ├── report.py                   报告与产物生成
     ├── html_report.py              报告转自包含 HTML（无 Markdown 阅读器也能看）
+    ├── webui.py                    本地网页服务（http.server，只用标准库）
     ├── workspace.py                唯一文件出入口（越权防护 / 备份 / 原子写）
     ├── workflow/
     │   ├── state.py                黑板
@@ -254,7 +264,7 @@ code-review-workflow/
 python -m unittest discover -s tests -v
 ```
 
-79 项，覆盖：
+90 项，覆盖：
 
 - **状态**：点号路径、快照隔离、回滚、diff、审计日志、序列化
 - **消息**：类型校验、投递、因果链、总线统计、序列化
@@ -263,6 +273,7 @@ python -m unittest discover -s tests -v
 - **规则**：12 条规则逐条正例 + 干净代码零误报 + 部分使用 import
 - **修复**：4 类机械修复、幂等性、非法修改回滚、模型重写的三道闸
 - **端到端**：离线全流程、跳过编码节点、写回与备份、报告产物、checkpoint
+- **网页界面**：服务层跑完整审查、HTTP 端点、查询串路由、4xx 错误体
 
 ## 10. 常见问题
 
@@ -286,5 +297,5 @@ python -m unittest discover -s tests -v
 1. 规则面向 Python（AST），其它语言只能做文本级检查；
 2. 修复只覆盖"改法唯一"的问题，语义类问题一律留人工；
 3. 顺序执行，没有并行分支（`Graph` 已支持多条件边，但引擎一次只走一条）；
-4. 没有 Web 界面（项目 1 的 Streamlit 界面没有搬过来，报告是 Markdown）；
+4. 网页版一次只审一个文件、且不做历史记录持久化（每次审查在临时目录里，关掉就没了）；
 5. 模型的语义审查偶尔会给出规则不认识的 `rule` 名，报告里会原样展示但不参与自动修复。
