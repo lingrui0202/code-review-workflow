@@ -250,6 +250,12 @@ def write_artifacts(
     (run_dir / "report.md").write_text(report, encoding="utf-8")
     written["report"] = run_dir / "report.md"
 
+    # 浏览器直接打开的版本（.md 在多数机器上没关联程序）
+    from .html_report import render as render_html
+
+    (run_dir / "report.html").write_text(render_html(report, title="代码审查工作流 · 运行报告"), encoding="utf-8")
+    written["html"] = run_dir / "report.html"
+
     (run_dir / "trace.json").write_text(
         json.dumps(ctx.result.to_dict(), ensure_ascii=False, indent=2),
         encoding="utf-8",

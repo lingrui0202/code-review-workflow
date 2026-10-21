@@ -34,6 +34,10 @@
 
 ## 2. 快速开始
 
+**Windows 最省事：双击 `start.bat`** —— 会跑一遍离线演示，然后用浏览器打开报告。
+
+命令行方式（不需要装任何依赖）：
+
 ```bash
 git clone https://github.com/lingrui0202/code-review-workflow.git
 cd code-review-workflow
@@ -46,7 +50,8 @@ python main.py run --offline
 
 | 文件 | 内容 |
 |------|------|
-| `report.md` | 给人看的完整报告（结论 / 时间线 / 协作记录 / 差异 / 遗留问题） |
+| `report.html` | **浏览器直接打开的报告**（双击就能看，无需 Markdown 阅读器） |
+| `report.md` | 同一份报告的 Markdown 版（适合贴进文档/仓库） |
 | `trace.json` | 每一步的机器可读记录（含状态变更、耗时、消息） |
 | `messages.json` | Agent 之间的全部消息 |
 | `state.json` | 最终黑板的完整快照 |
@@ -194,6 +199,7 @@ Agent 不关心前后是谁，只关心 `state` 里有什么、要写回什么�
 ```
 code-review-workflow/
 ├── main.py                         统一入口（薄壳，只有 20 行）
+├── start.bat                       Windows 双击即跑：演示 + 打开 HTML 报告
 ├── requirements.txt                零依赖说明
 ├── pyproject.toml
 ├── .env.example
@@ -213,6 +219,7 @@ code-review-workflow/
     ├── cli.py                      命令行
     ├── pipelines.py                主流程装配（节点 + 边 + 条件）
     ├── report.py                   报告与产物生成
+    ├── html_report.py              报告转自包含 HTML（无 Markdown 阅读器也能看）
     ├── workspace.py                唯一文件出入口（越权防护 / 备份 / 原子写）
     ├── workflow/
     │   ├── state.py                黑板

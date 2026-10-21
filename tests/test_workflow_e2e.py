@@ -97,9 +97,14 @@ class EndToEndTest(unittest.TestCase):
             ReportContext(result=result, graph=graph, settings=self.settings, workspace=self.workspace),
             result.run_dir,
         )
-        for key in ("report", "trace", "state", "messages", "review", "diff", "final_code"):
+        for key in ("report", "html", "trace", "state", "messages", "review", "diff", "final_code"):
             self.assertIn(key, written)
             self.assertTrue(written[key].exists())
+        html_doc = written["html"].read_text(encoding="utf-8")
+        self.assertIn("<!doctype html>", html_doc)
+        self.assertIn("<table>", html_doc)
+        self.assertIn("<h1>", html_doc)
+        self.assertIn("<pre class=\"diff\">", html_doc)
         report = written["report"].read_text(encoding="utf-8")
         self.assertIn("代码审查与修复工作流", report)
         self.assertIn("Agent 协作记录", report)

@@ -218,6 +218,7 @@ def _summary(result: RunResult, settings: Settings, printer: Printer) -> None:
 
     if result.run_dir:
         print(f"\n  报告：{result.run_dir / 'report.md'}")
+        print(f"  浏览器打开：{result.run_dir / 'report.html'}")
         print(f"  trace：{result.run_dir / 'trace.json'}")
 
 
